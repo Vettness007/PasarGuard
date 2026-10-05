@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#070914"/><stop offset="1" stop-color="#120a2a"/></linearGradient>
+    <linearGradient id="t" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#20a4ff"><animate attributeName="stop-color" values="#20a4ff;#a77bff;#20a4ff" dur="8s" repeatCount="indefinite"/></stop><stop offset=".55" stop-color="#5b6cff"/><stop offset="1" stop-color="#a77bff"><animate attributeName="stop-color" values="#a77bff;#20a4ff;#a77bff" dur="8s" repeatCount="indefinite"/></stop></linearGradient>
+    <radialGradient id="o1" cx=".85" cy=".1" r=".6"><stop offset="0" stop-color="#1d4ed8" stop-opacity=".55"/><stop offset="1" stop-color="#1d4ed8" stop-opacity="0"/></radialGradient>
+    <radialGradient id="o2" cx=".1" cy="1" r=".6"><stop offset="0" stop-color="#7c3aed" stop-opacity=".5"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/></radialGradient>
+    <pattern id="d" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#fff" fill-opacity=".06"/></pattern>
+  </defs>
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="360" rx="28" fill="url(#o1)"><animate attributeName="opacity" values=".7;1;.7" dur="6s" repeatCount="indefinite"/></rect>
+  <rect width="1200" height="360" rx="28" fill="url(#o2)"><animate attributeName="opacity" values="1;.65;1" dur="7s" repeatCount="indefinite"/></rect>
+  <circle cx="1040" cy="90" r="3" fill="#8fd3ff"><animate attributeName="cy" values="90;70;90" dur="5s" repeatCount="indefinite"/><animate attributeName="opacity" values=".2;.9;.2" dur="5s" repeatCount="indefinite"/></circle>
+  <circle cx="1110" cy="250" r="2" fill="#c4b5fd"><animate attributeName="cy" values="250;228;250" dur="6.5s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;.2;.9" dur="6.5s" repeatCount="indefinite"/></circle>
+  <circle cx="960" cy="300" r="2.5" fill="#7dd3fc"><animate attributeName="cy" values="300;282;300" dur="4.5s" repeatCount="indefinite"/><animate attributeName="opacity" values=".3;1;.3" dur="4.5s" repeatCount="indefinite"/></circle>
+  <rect width="1200" height="360" rx="28" fill="url(#d)"/>
+  <rect x="1" y="1" width="1198" height="358" rx="27" fill="none" stroke="#fff" stroke-opacity=".08"/>
+  <g transform="translate(110 110)">
+    <rect width="140" height="140" rx="34" fill="url(#t)"/>
+    <text x="70" y="94" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="64" fill="#fff" letter-spacing="-3">V</text>
+  </g>
+  <text x="300" y="175" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="76" fill="url(#t)" letter-spacing="-1">Vettness</text>
+  <text x="304" y="222" font-family="Arial,Helvetica,sans-serif" font-size="26" fill="#c7cde3" letter-spacing="3">RESELLER PANEL  ·  v6.1.2</text>
+  <g font-family="Arial,Helvetica,sans-serif" font-size="17" fill="#e8ebf7" font-weight="700">
+    <rect x="304" y="250" width="92" height="34" rx="17" fill="#fff" fill-opacity=".07" stroke="#fff" stroke-opacity=".12"/><text x="350" y="272" text-anchor="middle">Xray</text>
+  </g>
+</svg>
