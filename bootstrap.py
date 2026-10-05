@@ -8,24 +8,18 @@ import subprocess
 USER, PASS = "admin", "admin"          # first-boot login; change it later in the panel or with the owner key
 RESELLER_USER, RESELLER_PASS, RESELLER_GB = "reseller", "reseller", 50
 CORE_NAME, NODE_NAME = "JinX-Core", "JinX-Core"
-PRO_GROUP, STD_GROUP = "جینکس پرو", "𝗝𝗶𝗻𝗫"   # 1 premium config / 4 different configs
+PRO_GROUP, STD_GROUP = "جینکس پرو", "𝗝𝗶𝗻𝗫"   # only the Vless config is created; old std group is kept if it already exists
 OLD_GROUP = "jinx-all"                         # from earlier versions, renamed to STD_GROUP (keeps its users)
-TITLE = os.getenv("CONFIG_TITLE", "جینکس | 𝙎𝙪𝙥𝙚𝙧 𝗝𝗶𝗻𝗫")   # shown after every config name
+TITLE = os.getenv("CONFIG_TITLE", "Javad")     # shown after the config name: Vless - Javad
 GB = 1024 ** 3
 DAY = 86400
 
-# All configs go through Railway's TLS edge on 443 with alpn=http/1.1 (the only thing Railway serves).
-# جینکس پرو: the single most compatible + lowest-latency setup: VLESS + WebSocket + early data, Chrome fp.
-# 𝗝𝗶𝗻𝗫: 4 configs that are really different (protocol / transport / fingerprint / path), all supported
-#        by v2rayNG, V2Box, Hiddify, Streisand, NekoBox, Happ, Clash Meta and sing-box.
+# The only config goes through Railway's TLS edge on 443 with alpn=http/1.1 (the only thing Railway serves).
+# Vless: VLESS + WebSocket + early data, Chrome fingerprint.
 # ?ed=2560 = early data: the first packet rides on the handshake -> one round trip less per connection.
 INBOUNDS = [
-    # tag              proto     port  net            server path                                   fp         name       group
-    ("JX-VLESS-WS-1", "vless",  10001, "ws",          "/ws/",     "chrome",  "𝗣𝗿𝗼",        "pro"),
-    ("JX-VLESS-WS-2", "vless",  10002, "ws",          "/stream/", "firefox", "⚡ 𝗙𝗹𝗮𝘀𝗵",    "std"),
-    ("JX-TROJAN-WS",  "trojan", 10003, "ws",          "/live/",   "safari",  "🔥 𝗙𝗶𝗿𝗲",     "std"),
-    ("JX-VMESS-WS",   "vmess",  10004, "ws",          "/gw/",    "edge",    "💎 𝗗𝗶𝗮𝗺𝗼𝗻𝗱", "std"),
-    ("JX-VLESS-HU",   "vless",  10005, "httpupgrade", "/cdn/",    "ios",     "🌙 𝗡𝗶𝗴𝗵𝘁",    "std"),
+    # tag              proto     port  net   server path   fp       name     group
+    ("JX-VLESS-WS-1", "vless",  10001, "ws", "/ws/",       "chrome", "Vless", "pro"),
 ]
 EARLY_DATA = "?ed=2560"
 # real paths are unique per install (genpaths.py writes them to the volume before nginx starts)
@@ -34,11 +28,11 @@ try:
     INBOUNDS = [(t, pr, po, n, _P.get(t, pa), fp, nm, g) for (t, pr, po, n, pa, fp, nm, g) in INBOUNDS]
 except Exception as _e:
     print("[bootstrap] paths.json missing, run genpaths.py first:", _e, flush=True); sys.exit(1)
-TEMPLATES = [  # name, GB, days, group
-    ("10GB - 30 روز", 10, 30, "std"), ("30GB - 30 روز", 30, 30, "std"), ("50GB - 30 روز", 50, 30, "std"),
-    ("100GB - 30 روز", 100, 30, "std"), ("200GB - 60 روز", 200, 60, "std"), ("نامحدود - 30 روز", 0, 30, "std"),
-    ("Pro 30GB - 30 روز", 30, 30, "pro"), ("Pro 50GB - 30 روز", 50, 30, "pro"),
-    ("Pro 100GB - 30 روز", 100, 30, "pro"), ("Pro نامحدود - 30 روز", 0, 30, "pro"),
+TEMPLATES = [  # name, GB, days, group — every template uses the single Vless config
+    ("10GB - 30 روز", 10, 30, "pro"), ("30GB - 30 روز", 30, 30, "pro"), ("50GB - 30 روز", 50, 30, "pro"),
+    ("100GB - 30 روز", 100, 30, "pro"), ("200GB - 60 روز", 200, 60, "pro"), ("نامحدود - 30 روز", 0, 30, "pro"),
+    ("Vless 30GB - 30 روز", 30, 30, "pro"), ("Vless 50GB - 30 روز", 50, 30, "pro"),
+    ("Vless 100GB - 30 روز", 100, 30, "pro"), ("Vless نامحدود - 30 روز", 0, 30, "pro"),
 ]
 OLD_TEST_USERS = ("jinx_user1",)   # 50 GB test user that very old versions created by themselves
 
@@ -352,24 +346,27 @@ def ensure_node(core_id):
     must("POST", "/api/node", body); log("node created")
 
 def ensure_groups():
-    """Two groups: PRO_GROUP -> the 1 Pro config, STD_GROUP -> the other 4. Returns {"pro": id, "std": id}."""
-    want = {"pro": (PRO_GROUP, [i[0] for i in INBOUNDS if i[7] == "pro"]),
-            "std": (STD_GROUP, [i[0] for i in INBOUNDS if i[7] == "std"])}
+    """One config only. The Pro group gets it. An old Flash/Fire/Diamond/Night group, if it already
+    exists, is pointed at the same config so those users are not left with zero links. New installs
+    do not create that second group. Returns {"pro": id, "std": id} (same id)."""
+    tags = [i[0] for i in INBOUNDS]
     groups = as_list(must("GET", "/api/groups"), "groups")
     by_name = {g.get("name"): g for g in groups}
-    if STD_GROUP not in by_name and OLD_GROUP in by_name:      # upgrade: keep users of the old group
+    if STD_GROUP not in by_name and OLD_GROUP in by_name:
         by_name[STD_GROUP] = by_name.pop(OLD_GROUP)
-    ids = {}
-    for key, (name, tags) in want.items():
-        g = by_name.get(name)
-        if g:
-            if g.get("name") != name or sorted(g.get("inbound_tags") or []) != sorted(tags):
-                must("PUT", f"/api/group/{g['id']}", {"name": name, "inbound_tags": tags}); log("group fixed:", name)
-            ids[key] = g["id"]
-        else:
-            g = must("POST", "/api/group", {"name": name, "inbound_tags": tags}); ids[key] = g["id"]
-            log("group created:", name, f"({len(tags)} config)")
-    return ids
+    g = by_name.get(PRO_GROUP)
+    if g:
+        if sorted(g.get("inbound_tags") or []) != sorted(tags):
+            must("PUT", f"/api/group/{g['id']}", {"name": PRO_GROUP, "inbound_tags": tags}); log("group fixed:", PRO_GROUP)
+        pro_id = g["id"]
+    else:
+        g = must("POST", "/api/group", {"name": PRO_GROUP, "inbound_tags": tags}); pro_id = g["id"]
+        log("group created:", PRO_GROUP, f"({len(tags)} config)")
+    old = by_name.get(STD_GROUP)
+    if old and sorted(old.get("inbound_tags") or []) != sorted(tags):
+        must("PUT", f"/api/group/{old['id']}", {"name": old.get("name") or STD_GROUP, "inbound_tags": tags})
+        log("old group now serves the Vless config:", old.get("name"))
+    return {"pro": pro_id, "std": pro_id}
 
 QUIET = {}
 
@@ -390,7 +387,7 @@ def ensure_hosts():
             req("DELETE", f"/api/host/{h['id']}")
     changed = 0
     for idx, (tag, proto, port, net, path, fp, name, grp) in enumerate(INBOUNDS):
-        body = {"remark": f"{name} | {TITLE}", "allowinsecure": False, "address": [DOMAIN], "inbound_tag": tag,
+        body = {"remark": f"{name} - {TITLE}", "allowinsecure": False, "address": [DOMAIN], "inbound_tag": tag,
                 "port": 443, "sni": [DOMAIN], "host": [DOMAIN], "path": path + EARLY_DATA, "security": "tls",
                 "alpn": ["http/1.1"], "fingerprint": fp, "priority": idx + 1, "is_disabled": False}
         mine = [h for h in existing if h.get("inbound_tag") == tag]
@@ -500,7 +497,7 @@ def remove_demo_user():
             log("removed old auto-created test user", name) if c in (200, 204) else log(f"could not remove {name}: {c}")
 
 def attach_orphans(gids):
-    """Users created without a group are put in the 𝗝𝗶𝗻𝗫 group (4 configs). Users with a group are never touched."""
+    """Users created without a group get the Vless config. Users with a group are never touched."""
     code, res = req("GET", "/api/users?no_group=true&limit=200")
     if code == 401:
         login(); code, res = req("GET", "/api/users?no_group=true&limit=200")
@@ -508,8 +505,8 @@ def attach_orphans(gids):
     for u in as_list(res, "users"):
         # only touch users the API clearly reports as having NO group (never move Pro users)
         if not isinstance(u, dict) or "group_ids" not in u or u.get("group_ids"): continue
-        c, r = req("PUT", f"/api/user/{u['username']}", {"group_ids": [gids["std"]]})
-        log(f"no group picked for {u['username']} -> {STD_GROUP}" if c == 200 else f"attach {u['username']} failed {c}: {r}")
+        c, r = req("PUT", f"/api/user/{u['username']}", {"group_ids": [gids["pro"]]})
+        log(f"no group picked for {u['username']} -> {PRO_GROUP}" if c == 200 else f"attach {u['username']} failed {c}: {r}")
 
 def heal_node(state):
     """Self-healing: if the built-in core is not connected twice in a row, restart it."""
