@@ -411,61 +411,54 @@ def _upsert(by_addr, key, body):
     must("POST", "/api/host/", body)
     return 1
 
+FRONT_IPS = ["69.46.46.0","69.46.46.1","69.46.46.2","69.46.46.3","69.46.46.4","69.46.46.5","69.46.46.6","69.46.46.7","69.46.46.8","69.46.46.9","69.46.46.10","69.46.46.11","69.46.46.12","69.46.46.13","69.46.46.14","69.46.46.15","69.46.46.16","69.46.46.17","69.46.46.18","69.46.46.19","69.46.46.20","69.46.46.21","69.46.46.22","69.46.46.23","69.46.46.24","69.46.46.25","69.46.46.26","69.46.46.27","69.46.46.28","69.46.46.29","69.46.46.30","69.46.46.31","69.46.46.32","69.46.46.33","69.46.46.34","69.46.46.35","69.46.46.36","69.46.46.37","69.46.46.38","69.46.46.39","69.46.46.40","69.46.46.41","69.46.46.42","69.46.46.43","69.46.46.44","69.46.46.45","69.46.46.46","69.46.46.47","69.46.46.48","69.46.46.49","69.46.46.50","69.46.46.51","69.46.46.52","69.46.46.53","69.46.46.54","69.46.46.55","69.46.46.56","69.46.46.57","69.46.46.58","69.46.46.59","69.46.46.60","69.46.46.61","69.46.46.62","69.46.46.63","69.46.46.64","69.46.46.65","69.46.46.66","69.46.46.67","69.46.46.68","69.46.46.69","69.46.46.70","69.46.46.71","69.46.46.72","69.46.46.73","69.46.46.74","69.46.46.75","69.46.46.76","69.46.46.77","69.46.46.78","69.46.46.79","69.46.46.80","69.46.46.81","69.46.46.82","69.46.46.83","69.46.46.84","69.46.46.85","69.46.46.86","69.46.46.87","69.46.46.88","69.46.46.89","69.46.46.90","69.46.46.91","69.46.46.92","69.46.46.93","69.46.46.94","69.46.46.95","69.46.46.96","69.46.46.97","69.46.46.98","69.46.46.99","69.46.46.100","69.46.46.101","69.46.46.102","69.46.46.103","69.46.46.104","69.46.46.105","69.46.46.106","69.46.46.107","69.46.46.108","69.46.46.109","69.46.46.110","69.46.46.111","69.46.46.112","69.46.46.113","69.46.46.114","69.46.46.115","69.46.46.116","69.46.46.117","69.46.46.118","69.46.46.119","69.46.46.120","69.46.46.121","69.46.46.122","69.46.46.123","69.46.46.124","69.46.46.125","69.46.46.126","69.46.46.127","69.46.46.128","69.46.46.129","69.46.46.130","69.46.46.131","69.46.46.132","69.46.46.133","69.46.46.134","69.46.46.135","69.46.46.136","69.46.46.137","69.46.46.138","69.46.46.139","69.46.46.140","69.46.46.141","69.46.46.142","69.46.46.143","69.46.46.144","69.46.46.145","69.46.46.146","69.46.46.147","69.46.46.148","69.46.46.149","69.46.46.150","69.46.46.151","69.46.46.152","69.46.46.153","69.46.46.154","69.46.46.155","69.46.46.156","69.46.46.157","69.46.46.158","69.46.46.159","69.46.46.160","69.46.46.161","69.46.46.162","69.46.46.163","69.46.46.164","69.46.46.165","69.46.46.166","69.46.46.167","69.46.46.168","69.46.46.169","69.46.46.170","69.46.46.171","69.46.46.172","69.46.46.173","69.46.46.174","69.46.46.175","69.46.46.176","69.46.46.177","69.46.46.178","69.46.46.179","69.46.46.180","69.46.46.181","69.46.46.182","69.46.46.183","69.46.46.184","69.46.46.185","69.46.46.186","69.46.46.187","69.46.46.188","69.46.46.189","69.46.46.190","69.46.46.191","69.46.46.192","69.46.46.193","69.46.46.194","69.46.46.195","69.46.46.196","69.46.46.197","69.46.46.198","69.46.46.199","69.46.46.200","69.46.46.201","69.46.46.202","69.46.46.203","69.46.46.204","69.46.46.205","69.46.46.206","69.46.46.207","69.46.46.208","69.46.46.209","69.46.46.210","69.46.46.211","69.46.46.212","69.46.46.213","69.46.46.214","69.46.46.215","69.46.46.216","69.46.46.217","69.46.46.218","69.46.46.219","69.46.46.220","69.46.46.221","69.46.46.222","69.46.46.223","69.46.46.224","69.46.46.225","69.46.46.226","69.46.46.227","69.46.46.228","69.46.46.229","69.46.46.230","69.46.46.231","69.46.46.232","69.46.46.233","69.46.46.234","69.46.46.235","69.46.46.236","69.46.46.237","69.46.46.238","69.46.46.239","69.46.46.240","69.46.46.241","69.46.46.242","69.46.46.243","69.46.46.244","69.46.46.245","69.46.46.246","69.46.46.247","69.46.46.248","69.46.46.249","69.46.46.250","69.46.46.251","69.46.46.252","69.46.46.253","69.46.46.254","69.46.46.255"]
+
 def ensure_hosts():
-    """Keep the Railway-domain config, then do what v2ray-config-modifier IP List does:
-    one copy per IP, address swapped, SNI / Host / path / port left on the domain."""
+    """Domain config, plus one IP-list config per front IP (same idea as v2ray-config-modifier
+    IP List: address becomes the IP, host and sni stay the Railway domain)."""
     if not DOMAIN:
         log("WARNING: no public domain yet (Settings > Networking > Generate Domain), hosts skipped"); return
+    tag, proto, port, net, path, fp, name, grp = INBOUNDS[0]
+    wanted = []
+    wanted.append({"remark": "Vless - Javad", "address": [DOMAIN], "key": DOMAIN})
+    for ip in FRONT_IPS:
+        wanted.append({"remark": f"Vless - Javad - {ip}", "address": [ip], "key": ip})
     existing = as_list(must("GET", "/api/hosts"), "hosts")
-    tcp_host = (os.getenv("RAILWAY_TCP_PROXY_DOMAIN") or "").strip()
-    tcp_port = (os.getenv("RAILWAY_TCP_PROXY_PORT") or "").strip()
+    by_addr = {}
+    for h in existing:
+        addrs = h.get("address") or []
+        if isinstance(addrs, str): addrs = [addrs]
+        if addrs: by_addr.setdefault(str(addrs[0]), []).append(h)
     changed = 0
-    ws = next(i for i in INBOUNDS if i[3] == "ws")
-    tag, proto, port, net, path, fp, name, grp = ws
-    by_ip = {}
-    for h in existing:
-        if h.get("inbound_tag") == tag:
-            by_ip.setdefault(_addr(h), []).append(h)
-    base = {"remark": "Vless - Javad", "allowinsecure": False, "address": [DOMAIN], "inbound_tag": tag,
-            "port": 443, "sni": [DOMAIN], "host": [DOMAIN], "path": path + EARLY_DATA, "security": "tls",
-            "alpn": ["http/1.1"], "fingerprint": fp, "priority": 0, "is_disabled": False}
-    changed += _upsert(by_ip, DOMAIN, base)
-    for n, ip in enumerate(RAILWAY_IPS):
-        body = {"remark": f"Vless - Javad - {ip}", "allowinsecure": False, "address": [ip], "inbound_tag": tag,
+    kept = set()
+    for idx, item in enumerate(wanted):
+        body = {"remark": item["remark"], "allowinsecure": False, "address": item["address"], "inbound_tag": tag,
                 "port": 443, "sni": [DOMAIN], "host": [DOMAIN], "path": path + EARLY_DATA, "security": "tls",
-                "alpn": ["http/1.1"], "fingerprint": fp, "priority": n + 1, "is_disabled": False}
-        changed += _upsert(by_ip, ip, body)
-    grpc = next((i for i in INBOUNDS if i[3] == "grpc"), None)
-    if grpc:
-        tag, proto, port, net, path, fp, name, grp = grpc
-        if tcp_host and tcp_port.isdigit():
-            body = {"remark": "Grpc - Javad", "allowinsecure": True, "address": [tcp_host], "inbound_tag": tag,
-                    "port": int(tcp_port), "sni": [tcp_host], "host": [tcp_host], "path": path, "security": "tls",
-                    "alpn": ["h2"], "fingerprint": fp, "priority": 300, "is_disabled": False}
-            mine = [h for h in existing if h.get("inbound_tag") == tag]
-            if mine:
-                cur = mine[0]
-                if any(_norm(cur.get(k)) != _norm(v) for k, v in body.items()):
-                    must("PUT", f"/api/host/{cur['id']}", {**body, "id": cur["id"]}); changed += 1
-                for extra in mine[1:]:
-                    req("DELETE", f"/api/host/{extra['id']}"); changed += 1
-            else:
-                must("POST", "/api/host/", body); changed += 1
+                "alpn": ["http/1.1"], "fingerprint": fp, "priority": idx + 1, "is_disabled": False}
+        mine = by_addr.get(item["key"]) or []
+        if mine:
+            cur = mine[0]
+            kept.add(cur.get("id"))
+            if any(_norm(cur.get(k)) != _norm(v) for k, v in body.items()):
+                must("PUT", f"/api/host/{cur['id']}", {**body, "id": cur["id"]}); changed += 1
+            for extra in mine[1:]:
+                req("DELETE", f"/api/host/{extra['id']}"); changed += 1
         else:
-            log("WARNING: gRPC host skipped. Settings > Networking > TCP Proxy, internal port", GRPC_PORT)
+            must("POST", "/api/host/", body); changed += 1
     existing = as_list(must("GET", "/api/hosts"), "hosts")
-    have = { _addr(h) for h in existing if h.get("inbound_tag") == ws[0] }
-    if DOMAIN not in have or not set(RAILWAY_IPS) <= have:
-        raise RuntimeError("Vless domain or IP list was not saved")
-    keep = set(RAILWAY_IPS) | {DOMAIN}
-    keep_grpc = bool(grpc and tcp_host and tcp_port.isdigit())
+    have = 0
     for h in existing:
-        t = str(h.get("inbound_tag") or "")
-        if not t.startswith("JX-"): continue
-        if t == ws[0] and _addr(h) in keep: continue
-        if keep_grpc and t == "JX-VLESS-GRPC": continue
-        req("DELETE", f"/api/host/{h['id']}"); changed += 1
-    if changed or not QUIET.get("hosts"): log(f"1 domain + {len(RAILWAY_IPS)} IP configs ready on", DOMAIN); QUIET["hosts"] = True
+        addrs = h.get("address") or []
+        if isinstance(addrs, str): addrs = [addrs]
+        addr = str(addrs[0]) if addrs else ""
+        if h.get("inbound_tag") == tag and (addr == DOMAIN or addr in FRONT_IPS):
+            have += 1
+            continue
+        if str(h.get("inbound_tag") or "").startswith("JX-") or addr in FRONT_IPS:
+            req("DELETE", f"/api/host/{h['id']}"); changed += 1
+    if have < len(wanted):
+        raise RuntimeError(f"IP list hosts incomplete ({have}/{len(wanted)})")
+    if changed or not QUIET.get("hosts"): log(f"{have} hosts ready on", DOMAIN, f"(domain + {len(FRONT_IPS)} IPs)"); QUIET["hosts"] = True
 
 def ensure_settings():
     if not DOMAIN: return
