@@ -397,9 +397,23 @@ def _addr(h):
     if isinstance(a, list): return str(a[0]).strip() if a else ""
     return str(a or "").strip()
 
+def _upsert(by_addr, key, body):
+    """Create or update one host. Returns 1 if something changed."""
+    mine = by_addr.get(key) or []
+    if mine:
+        cur = mine[0]
+        changed = 0
+        if any(_norm(cur.get(k)) != _norm(v) for k, v in body.items()):
+            must("PUT", f"/api/host/{cur['id']}", {**body, "id": cur["id"]}); changed = 1
+        for extra in mine[1:]:
+            req("DELETE", f"/api/host/{extra['id']}"); changed = 1
+        return changed
+    must("POST", "/api/host/", body)
+    return 1
+
 def ensure_hosts():
-    """IP List for the Railway WebSocket config: address becomes 69.46.46.0-255, one host each.
-    SNI, Host header and path stay on the Railway domain, so TLS still matches. gRPC is unchanged."""
+    """Keep the Railway-domain config, then do what v2ray-config-modifier IP List does:
+    one copy per IP, address swapped, SNI / Host / path / port left on the domain."""
     if not DOMAIN:
         log("WARNING: no public domain yet (Settings > Networking > Generate Domain), hosts skipped"); return
     existing = as_list(must("GET", "/api/hosts"), "hosts")
@@ -412,19 +426,15 @@ def ensure_hosts():
     for h in existing:
         if h.get("inbound_tag") == tag:
             by_ip.setdefault(_addr(h), []).append(h)
+    base = {"remark": "Vless - Javad", "allowinsecure": False, "address": [DOMAIN], "inbound_tag": tag,
+            "port": 443, "sni": [DOMAIN], "host": [DOMAIN], "path": path + EARLY_DATA, "security": "tls",
+            "alpn": ["http/1.1"], "fingerprint": fp, "priority": 0, "is_disabled": False}
+    changed += _upsert(by_ip, DOMAIN, base)
     for n, ip in enumerate(RAILWAY_IPS):
         body = {"remark": f"Vless - Javad - {ip}", "allowinsecure": False, "address": [ip], "inbound_tag": tag,
                 "port": 443, "sni": [DOMAIN], "host": [DOMAIN], "path": path + EARLY_DATA, "security": "tls",
                 "alpn": ["http/1.1"], "fingerprint": fp, "priority": n + 1, "is_disabled": False}
-        mine = by_ip.get(ip) or []
-        if mine:
-            cur = mine[0]
-            if any(_norm(cur.get(k)) != _norm(v) for k, v in body.items()):
-                must("PUT", f"/api/host/{cur['id']}", {**body, "id": cur["id"]}); changed += 1
-            for extra in mine[1:]:
-                req("DELETE", f"/api/host/{extra['id']}"); changed += 1
-        else:
-            must("POST", "/api/host/", body); changed += 1
+        changed += _upsert(by_ip, ip, body)
     grpc = next((i for i in INBOUNDS if i[3] == "grpc"), None)
     if grpc:
         tag, proto, port, net, path, fp, name, grp = grpc
@@ -445,16 +455,17 @@ def ensure_hosts():
             log("WARNING: gRPC host skipped. Settings > Networking > TCP Proxy, internal port", GRPC_PORT)
     existing = as_list(must("GET", "/api/hosts"), "hosts")
     have = { _addr(h) for h in existing if h.get("inbound_tag") == ws[0] }
-    if not set(RAILWAY_IPS) <= have:
-        raise RuntimeError("Vless IP list was not saved, old hosts kept")
+    if DOMAIN not in have or not set(RAILWAY_IPS) <= have:
+        raise RuntimeError("Vless domain or IP list was not saved")
+    keep = set(RAILWAY_IPS) | {DOMAIN}
     keep_grpc = bool(grpc and tcp_host and tcp_port.isdigit())
     for h in existing:
         t = str(h.get("inbound_tag") or "")
         if not t.startswith("JX-"): continue
-        if t == ws[0] and _addr(h) in set(RAILWAY_IPS): continue
+        if t == ws[0] and _addr(h) in keep: continue
         if keep_grpc and t == "JX-VLESS-GRPC": continue
         req("DELETE", f"/api/host/{h['id']}"); changed += 1
-    if changed or not QUIET.get("hosts"): log(f"{len(RAILWAY_IPS)} Vless IP configs ready on", DOMAIN); QUIET["hosts"] = True
+    if changed or not QUIET.get("hosts"): log(f"1 domain + {len(RAILWAY_IPS)} IP configs ready on", DOMAIN); QUIET["hosts"] = True
 
 def ensure_settings():
     if not DOMAIN: return
