@@ -14,9 +14,9 @@ TITLE = os.getenv("CONFIG_TITLE", "Javad")     # shown after the config name: Vl
 GB = 1024 ** 3
 DAY = 86400
 
-# The only config goes through Railway's TLS edge on 443 with alpn=http/1.1 (the only thing Railway serves).
-# Vless: VLESS + WebSocket + early data, Chrome fingerprint.
-# ?ed=2560 = early data: the first packet rides on the handshake -> one round trip less per connection.
+# Vless: VLESS + WebSocket through Railway's HTTPS edge (443, alpn=http/1.1).
+# IP List copies of this config only change the address. sni, host, path and port stay.
+# ?ed=2560 = early data: the first packet rides on the handshake.
 INBOUNDS = [
     # tag              proto     port  net   server path   fp       name     group
     ("JX-VLESS-WS-1", "vless",  10001, "ws", "/ws/",       "chrome", "Vless", "pro"),
@@ -292,12 +292,13 @@ def login():
 
 def inbound(tag, proto, port, net, path):
     stream = {"network": net, "security": "none"}
+    listen = "127.0.0.1"
     if net == "ws": stream["wsSettings"] = {"path": path}
     elif net == "httpupgrade": stream["httpupgradeSettings"] = {"path": path}
     elif net == "xhttp": stream["xhttpSettings"] = {"path": path, "mode": "auto"}
     settings = {"clients": []}
     if proto == "vless": settings["decryption"] = "none"
-    return {"tag": tag, "listen": "127.0.0.1", "port": port, "protocol": proto,
+    return {"tag": tag, "listen": listen, "port": port, "protocol": proto,
             "settings": settings, "streamSettings": stream,
             "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"], "routeOnly": True}}
 
@@ -346,29 +347,21 @@ def ensure_node(core_id):
     must("POST", "/api/node", body); log("node created")
 
 def ensure_groups():
-    """One config only. Every existing group that pointed at a JinX inbound is moved onto that
-    single Vless inbound, otherwise those users lose every link when the old hosts are removed.
-    Returns {"pro": id, "std": id} (same id)."""
+    """Always keep one visible group named Vless on the single inbound.
+    Old JinX groups are renamed in place so existing users stay attached."""
     tags = [i[0] for i in INBOUNDS]
     groups = as_list(must("GET", "/api/groups"), "groups")
-    by_name = {g.get("name"): g for g in groups}
-    if STD_GROUP not in by_name and OLD_GROUP in by_name:
-        by_name[STD_GROUP] = by_name.pop(OLD_GROUP)
-    g = by_name.get(PRO_GROUP)
+    by_name = {g.get("name"): g for g in groups if isinstance(g, dict)}
+    g = by_name.get("Vless") or by_name.get(PRO_GROUP) or by_name.get(STD_GROUP) or by_name.get(OLD_GROUP)
     if g:
         pro_id = g["id"]
+        if g.get("name") != "Vless" or sorted(g.get("inbound_tags") or []) != sorted(tags):
+            must("PUT", f"/api/group/{pro_id}", {"name": "Vless", "inbound_tags": tags})
+            log("group ready: Vless")
     else:
-        g = must("POST", "/api/group", {"name": PRO_GROUP, "inbound_tags": tags}); pro_id = g["id"]
-        log("group created:", PRO_GROUP, f"({len(tags)} config)")
-        groups.append(g)
-    for grp in groups:
-        if not isinstance(grp, dict) or not grp.get("id"): continue
-        have = [str(t) for t in (grp.get("inbound_tags") or [])]
-        mine = grp.get("id") == pro_id or grp.get("name") in (PRO_GROUP, STD_GROUP, OLD_GROUP) or any(t.startswith("JX-") for t in have)
-        if not mine: continue
-        if sorted(have) != sorted(tags):
-            must("PUT", f"/api/group/{grp['id']}", {"name": grp.get("name") or PRO_GROUP, "inbound_tags": tags})
-            log("group now serves Vless - Javad:", grp.get("name"))
+        g = must("POST", "/api/group", {"name": "Vless", "inbound_tags": tags})
+        pro_id = g["id"]
+        log("group created: Vless", pro_id)
     return {"pro": pro_id, "std": pro_id}
 
 QUIET = {}
@@ -380,32 +373,51 @@ def _norm(v):
     if isinstance(v, bool): return v
     return [str(v).lower()] if isinstance(v, str) and "," not in v else str(v).lower()
 
+FRONT_IPS = [f"69.46.46.{i}" for i in range(256)]  # IP List, same idea as v2ray-config-modifier
+RETIRED = {"JX-VLESS-WS-2", "JX-TROJAN-WS", "JX-VMESS-WS", "JX-VLESS-HU", "JX-VLESS-GRPC"}
+
+def _addrs(h):
+    a = h.get("address")
+    if isinstance(a, list): return [str(x).strip() for x in a if str(x).strip()]
+    if isinstance(a, str) and a.strip(): return [a.strip()]
+    return []
+
 def ensure_hosts():
+    """Domain config first, then one IP-list config per front IP.
+    Address becomes the IP; host and sni stay the Railway domain.
+    Never deletes a host just because the list API omitted its address."""
     if not DOMAIN:
         log("WARNING: no public domain yet (Settings > Networking > Generate Domain), hosts skipped"); return
-    existing = as_list(must("GET", "/api/hosts"), "hosts")
-    wanted = {i[0] for i in INBOUNDS}
+    tag, proto, port, net, path, fp, name, grp = INBOUNDS[0]
+    wanted = [("Vless - Javad", DOMAIN)] + [(f"Vless - Javad - {ip}", ip) for ip in FRONT_IPS]
+    existing = as_list(must("GET", "/api/hosts?limit=1000"), "hosts")
+    by_addr = {}
+    for h in existing:
+        for addr in _addrs(h):
+            by_addr.setdefault(addr, []).append(h)
     changed = 0
-    for idx, (tag, proto, port, net, path, fp, name, grp) in enumerate(INBOUNDS):
-        body = {"remark": "Vless - Javad", "allowinsecure": False, "address": [DOMAIN], "inbound_tag": tag,
+    for idx, (remark, addr) in enumerate(wanted):
+        body = {"remark": remark, "allowinsecure": False, "address": [addr], "inbound_tag": tag,
                 "port": 443, "sni": [DOMAIN], "host": [DOMAIN], "path": path + EARLY_DATA, "security": "tls",
                 "alpn": ["http/1.1"], "fingerprint": fp, "priority": idx + 1, "is_disabled": False}
-        mine = [h for h in existing if h.get("inbound_tag") == tag]
-        if mine:
-            cur = mine[0]
-            if any(_norm(cur.get(k)) != _norm(v) for k, v in body.items()):
-                must("PUT", f"/api/host/{cur['id']}", {**body, "id": cur["id"]}); changed += 1
-            for extra in mine[1:]:  # remove auto-created duplicates
-                req("DELETE", f"/api/host/{extra['id']}")
-        else:
-            must("POST", "/api/host/", body); changed += 1
-    existing = as_list(must("GET", "/api/hosts"), "hosts")
-    if not any(h.get("inbound_tag") in wanted for h in existing):
-        raise RuntimeError("Vless host was not saved, old hosts kept")
-    for h in existing:  # only after the Vless host exists: drop Flash / Fire / Diamond / Night
-        if str(h.get("inbound_tag") or "").startswith("JX-") and h.get("inbound_tag") not in wanted:
+        mine = by_addr.get(addr) or []
+        try:
+            if mine:
+                cur = mine[0]
+                if any(_norm(cur.get(k)) != _norm(v) for k, v in body.items()):
+                    must("PUT", f"/api/host/{cur['id']}", {**body, "id": cur["id"]}); changed += 1
+                for extra in mine[1:]:
+                    req("DELETE", f"/api/host/{extra['id']}"); changed += 1
+            else:
+                must("POST", "/api/host/", body); changed += 1
+        except Exception as e:
+            log("host skipped", addr, e)
+            if addr == DOMAIN: raise
+    for h in existing:
+        if str(h.get("inbound_tag") or "") in RETIRED:
             req("DELETE", f"/api/host/{h['id']}"); changed += 1
-    if changed or not QUIET.get("hosts"): log(f"{len(INBOUNDS)} hosts ready on", DOMAIN); QUIET["hosts"] = True
+    if changed or not QUIET.get("hosts"):
+        log(f"hosts ready: domain + {len(FRONT_IPS)} IPs"); QUIET["hosts"] = True
 
 def ensure_settings():
     if not DOMAIN: return
