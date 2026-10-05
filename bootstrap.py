@@ -10,10 +10,15 @@ RESELLER_USER, RESELLER_PASS, RESELLER_GB = "reseller", "reseller", 50
 CORE_NAME, NODE_NAME = "JinX-Core", "JinX-Core"
 PRO_GROUP, STD_GROUP = "جینکس پرو", "𝗝𝗶𝗻𝗫"   # 1 premium config / 4 different configs
 OLD_GROUP = "jinx-all"                         # from earlier versions, renamed to STD_GROUP (keeps its users)
-TITLE = os.getenv("CONFIG_TITLE", "-Javad")   # shown after every config name
+TITLE = os.getenv("CONFIG_TITLE", "جینکس | 𝙎𝙪𝙥𝙚𝙧 𝗝𝗶𝗻𝗫")   # shown after every config name
 GB = 1024 ** 3
 DAY = 86400
 
+# All configs go through Railway's TLS edge on 443 with alpn=http/1.1 (the only thing Railway serves).
+# جینکس پرو: the single most compatible + lowest-latency setup: VLESS + WebSocket + early data, Chrome fp.
+# 𝗝𝗶𝗻𝗫: 4 configs that are really different (protocol / transport / fingerprint / path), all supported
+#        by v2rayNG, V2Box, Hiddify, Streisand, NekoBox, Happ, Clash Meta and sing-box.
+# ?ed=2560 = early data: the first packet rides on the handshake -> one round trip less per connection.
 INBOUNDS = [
     # tag              proto     port  net            server path                                   fp         name       group
     ("JX-VLESS-WS-1", "vless",  10001, "ws",          "/ws/",     "chrome",  "𝗣𝗿𝗼",        "pro"),

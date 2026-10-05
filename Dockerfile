@@ -1,3 +1,4 @@
+# Super JinX Panel: PasarGuard + Xray core + nginx in one Railway service (port 8080)
 FROM pasarguard/node:latest AS node
 
 FROM pasarguard/panel:latest
