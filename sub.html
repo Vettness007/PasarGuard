@@ -538,6 +538,23 @@ var unl=!limit,status=String(D.status||"active").toLowerCase().replace(/^usersta
 var pct=unl?0:Math.min(100,used/limit*100);
 var sub=location.origin+location.pathname.replace(/\/+$/,"").replace(/\/(info|usage|links|links_base64|xray|clash|clash_meta|sing_box|sing-box|outline|wireguard)$/,"");
 var links=(Array.isArray(D.links)?D.links:[]).map(function(l){return String(l||"").trim()}).filter(function(l){return /^[a-z0-9+.-]+:\/\//i.test(l)});
+/* IP List: same as v2ray-config-modifier. Address only; sni, host, path, port stay. */
+links=(function(list){
+ var ips=[],out=[],seen={};
+ for(var i=0;i<256;i++)ips.push("69.46.46."+i);
+ function add(u){if(u&&!seen[u]){seen[u]=1;out.push(u)}}
+ list.forEach(function(l){
+  add(l);
+  var m=/^(vless:\/\/[^@]+)@([^:/]+):(\d+)(.*)$/i.exec(l);
+  if(!m)return;
+  var end=m[4],hash=end.indexOf("#"),q=hash<0?end:end.slice(0,hash);
+  var name=hash<0?"Vless - Javad":"";
+  if(hash>-1){try{name=decodeURIComponent(end.slice(hash+1).replace(/\+/g," "))}catch(e){name=end.slice(hash+1)}}
+  name=name.replace(/ - 69\.46\.46\.\d+$/,"");
+  ips.forEach(function(ip){if(ip!==m[2])add(m[1]+"@"+ip+":"+m[3]+q+"#"+encodeURIComponent(name+" - "+ip))});
+ });
+ return out;
+})(links);
 var ua=navigator.userAgent||"",REC=/Android/i.test(ua)?"v2rayNG":"V2Box";
 
 function parse(l){

@@ -347,21 +347,28 @@ def ensure_node(core_id):
     must("POST", "/api/node", body); log("node created")
 
 def ensure_groups():
-    """Always keep one visible group named Vless on the single inbound.
-    Old JinX groups are renamed in place so existing users stay attached."""
+    """One inbound. Every group that already has users is pointed at it, so Copy configs
+    cannot come back empty. The visible group name stays Vless."""
     tags = [i[0] for i in INBOUNDS]
     groups = as_list(must("GET", "/api/groups"), "groups")
-    by_name = {g.get("name"): g for g in groups if isinstance(g, dict)}
-    g = by_name.get("Vless") or by_name.get(PRO_GROUP) or by_name.get(STD_GROUP) or by_name.get(OLD_GROUP)
+    known = {"Vless", PRO_GROUP, STD_GROUP, OLD_GROUP}
+    g = next((x for x in groups if isinstance(x, dict) and x.get("name") in known), None)
     if g:
         pro_id = g["id"]
-        if g.get("name") != "Vless" or sorted(g.get("inbound_tags") or []) != sorted(tags):
-            must("PUT", f"/api/group/{pro_id}", {"name": "Vless", "inbound_tags": tags})
-            log("group ready: Vless")
     else:
         g = must("POST", "/api/group", {"name": "Vless", "inbound_tags": tags})
         pro_id = g["id"]
+        groups.append(g)
         log("group created: Vless", pro_id)
+    for grp in groups:
+        if not isinstance(grp, dict) or not grp.get("id"): continue
+        have = [str(t) for t in (grp.get("inbound_tags") or [])]
+        if grp.get("id") != pro_id and grp.get("name") not in known and not any(t.startswith("JX-") for t in have):
+            continue
+        name = "Vless" if grp.get("id") == pro_id else grp.get("name")
+        if grp.get("name") != name or sorted(have) != sorted(tags):
+            must("PUT", f"/api/group/{grp['id']}", {"name": name, "inbound_tags": tags})
+            log("group serves Vless - Javad:", name)
     return {"pro": pro_id, "std": pro_id}
 
 QUIET = {}
@@ -382,42 +389,50 @@ def _addrs(h):
     if isinstance(a, str) and a.strip(): return [a.strip()]
     return []
 
+def _load_hosts():
+    for path in ("/api/hosts", "/api/hosts?limit=500"):
+        code, res = req("GET", path)
+        if code == 200:
+            return as_list(res, "hosts")
+    return as_list(must("GET", "/api/hosts"), "hosts")
+
+def _save_host(existing, remark, addr, tag, path, fp, priority):
+    body = {"remark": remark, "allowinsecure": False, "address": [addr], "inbound_tag": tag,
+            "port": 443, "sni": [DOMAIN], "host": [DOMAIN], "path": path + EARLY_DATA, "security": "tls",
+            "alpn": ["http/1.1"], "fingerprint": fp, "priority": priority, "is_disabled": False}
+    mine = [h for h in existing if addr in _addrs(h)]
+    if mine:
+        cur = mine[0]
+        if any(_norm(cur.get(k)) != _norm(v) for k, v in body.items()):
+            must("PUT", f"/api/host/{cur['id']}", {**body, "id": cur["id"]})
+        return cur["id"]
+    created = must("POST", "/api/host/", body)
+    return created.get("id") if isinstance(created, dict) else None
+
 def ensure_hosts():
-    """Domain config first, then one IP-list config per front IP.
-    Address becomes the IP; host and sni stay the Railway domain.
-    Never deletes a host just because the list API omitted its address."""
+    """Domain host is saved and checked before any IP host is touched.
+    An IP failure can never remove Vless - Javad."""
     if not DOMAIN:
         log("WARNING: no public domain yet (Settings > Networking > Generate Domain), hosts skipped"); return
     tag, proto, port, net, path, fp, name, grp = INBOUNDS[0]
-    wanted = [("Vless - Javad", DOMAIN)] + [(f"Vless - Javad - {ip}", ip) for ip in FRONT_IPS]
-    existing = as_list(must("GET", "/api/hosts?limit=1000"), "hosts")
-    by_addr = {}
-    for h in existing:
-        for addr in _addrs(h):
-            by_addr.setdefault(addr, []).append(h)
-    changed = 0
-    for idx, (remark, addr) in enumerate(wanted):
-        body = {"remark": remark, "allowinsecure": False, "address": [addr], "inbound_tag": tag,
-                "port": 443, "sni": [DOMAIN], "host": [DOMAIN], "path": path + EARLY_DATA, "security": "tls",
-                "alpn": ["http/1.1"], "fingerprint": fp, "priority": idx + 1, "is_disabled": False}
-        mine = by_addr.get(addr) or []
+    existing = _load_hosts()
+    _save_host(existing, "Vless - Javad", DOMAIN, tag, path, fp, 1)
+    existing = _load_hosts()
+    if not any(DOMAIN in _addrs(h) for h in existing):
+        raise RuntimeError("domain host was not saved")
+    log("domain host ready: Vless - Javad")
+    made = 0
+    for n, ip in enumerate(FRONT_IPS, start=2):
         try:
-            if mine:
-                cur = mine[0]
-                if any(_norm(cur.get(k)) != _norm(v) for k, v in body.items()):
-                    must("PUT", f"/api/host/{cur['id']}", {**body, "id": cur["id"]}); changed += 1
-                for extra in mine[1:]:
-                    req("DELETE", f"/api/host/{extra['id']}"); changed += 1
-            else:
-                must("POST", "/api/host/", body); changed += 1
+            _save_host(existing, f"Vless - Javad - {ip}", ip, tag, path, fp, n)
+            made += 1
         except Exception as e:
-            log("host skipped", addr, e)
-            if addr == DOMAIN: raise
+            log("ip host skipped", ip, e)
     for h in existing:
         if str(h.get("inbound_tag") or "") in RETIRED:
-            req("DELETE", f"/api/host/{h['id']}"); changed += 1
-    if changed or not QUIET.get("hosts"):
-        log(f"hosts ready: domain + {len(FRONT_IPS)} IPs"); QUIET["hosts"] = True
+            req("DELETE", f"/api/host/{h['id']}")
+    log(f"hosts ready: domain + {made} IPs")
+    QUIET["hosts"] = True
 
 def ensure_settings():
     if not DOMAIN: return
