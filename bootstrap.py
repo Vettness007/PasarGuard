@@ -380,8 +380,12 @@ def _norm(v):
     if isinstance(v, bool): return v
     return [str(v).lower()] if isinstance(v, str) and "," not in v else str(v).lower()
 
-FRONT_IPS = [f"69.46.46.{i}" for i in range(256)]  # IP List, same idea as v2ray-config-modifier
+# IP List, same rule as v2ray-config-modifier: one copy per IP.
+# Only the address changes. sni, host, path and port stay on the domain config.
+FRONT_IPS = [f"69.46.46.{i}" for i in range(256)]
 RETIRED = {"JX-VLESS-WS-2", "JX-TROJAN-WS", "JX-VMESS-WS", "JX-VLESS-HU", "JX-VLESS-GRPC"}
+_ip_lock = threading.Lock()
+_ip_running = False
 
 def _addrs(h):
     a = h.get("address")
@@ -390,11 +394,34 @@ def _addrs(h):
     return []
 
 def _load_hosts():
-    for path in ("/api/hosts", "/api/hosts?limit=500"):
-        code, res = req("GET", path)
-        if code == 200:
-            return as_list(res, "hosts")
-    return as_list(must("GET", "/api/hosts"), "hosts")
+    """All hosts, even when the API pages them. A short page means we are done."""
+    out, seen = [], set()
+    for offset in range(0, 2000, 100):
+        code, res = req("GET", f"/api/hosts?limit=100&offset={offset}")
+        if code != 200:
+            if offset == 0:
+                code, res = req("GET", "/api/hosts")
+                return as_list(res, "hosts") if code == 200 else []
+            break
+        page = as_list(res, "hosts")
+        if not page: break
+        fresh = 0
+        for h in page:
+            i = h.get("id")
+            if i in seen: return out          # API ignored offset and repeated page 1
+            seen.add(i); out.append(h); fresh += 1
+        if fresh < 100: break
+    return out
+
+def _post_host(body):
+    """PasarGuard registers POST /api/host/ ; try both so a redirect cannot drop the create."""
+    last = None
+    for path in ("/api/host/", "/api/host"):
+        code, res = req("POST", path, body)
+        if code in (200, 201) and isinstance(res, dict): return res
+        last = (path, code, res)
+        if code not in (307, 308, 404, 405): break
+    raise RuntimeError(f"host create failed {last}")
 
 def _save_host(existing, remark, addr, tag, path, fp, priority):
     body = {"remark": remark, "allowinsecure": False, "address": [addr], "inbound_tag": tag,
@@ -404,14 +431,51 @@ def _save_host(existing, remark, addr, tag, path, fp, priority):
     if mine:
         cur = mine[0]
         if any(_norm(cur.get(k)) != _norm(v) for k, v in body.items()):
-            must("PUT", f"/api/host/{cur['id']}", {**body, "id": cur["id"]})
-        return cur["id"]
-    created = must("POST", "/api/host/", body)
-    return created.get("id") if isinstance(created, dict) else None
+            must("PUT", f"/api/host/{cur['id']}", body)
+        return cur.get("id")
+    created = _post_host(body)
+    existing.append(created)
+    return created.get("id")
+
+def _fill_ips(tag, path, fp):
+    """Background IP List. Does not block boot, the health check, or the domain host."""
+    global _ip_running
+    try:
+        existing = _load_hosts()
+        for h in list(existing):
+            if str(h.get("inbound_tag") or "") in RETIRED:
+                req("DELETE", f"/api/host/{h['id']}")
+        have = {a for h in existing for a in _addrs(h)}
+        made = skipped = 0
+        for n, ip in enumerate(FRONT_IPS, start=2):
+            if ip in have: continue
+            try:
+                _save_host(existing, f"Vless - Javad - {ip}", ip, tag, path, fp, n)
+                have.add(ip); made += 1
+            except Exception as e:
+                skipped += 1
+                log("ip host skipped", ip, e)
+            if made and made % 20 == 0:
+                log(f"IP List progress: {made} new")
+                time.sleep(0.3)
+                existing = _load_hosts()
+                have = {a for h in existing for a in _addrs(h)}
+        log(f"IP List ready: {len(FRONT_IPS)} addresses, {made} created, {skipped} skipped"
+            " (only address changes; sni/host/path/port stay)")
+        QUIET["ips"] = skipped == 0
+    finally:
+        with _ip_lock:
+            _ip_running = False
+
+def _start_ip_fill(tag, path, fp):
+    global _ip_running
+    with _ip_lock:
+        if _ip_running: return
+        _ip_running = True
+    threading.Thread(target=_fill_ips, args=(tag, path, fp), daemon=True).start()
 
 def ensure_hosts():
-    """Domain host is saved and checked before any IP host is touched.
-    An IP failure can never remove Vless - Javad."""
+    """Domain host first, always. IP List copies are generated after DONE, in the background."""
     if not DOMAIN:
         log("WARNING: no public domain yet (Settings > Networking > Generate Domain), hosts skipped"); return
     tag, proto, port, net, path, fp, name, grp = INBOUNDS[0]
@@ -420,19 +484,15 @@ def ensure_hosts():
     existing = _load_hosts()
     if not any(DOMAIN in _addrs(h) for h in existing):
         raise RuntimeError("domain host was not saved")
-    log("domain host ready: Vless - Javad")
-    made = 0
-    for n, ip in enumerate(FRONT_IPS, start=2):
-        try:
-            _save_host(existing, f"Vless - Javad - {ip}", ip, tag, path, fp, n)
-            made += 1
-        except Exception as e:
-            log("ip host skipped", ip, e)
-    for h in existing:
-        if str(h.get("inbound_tag") or "") in RETIRED:
-            req("DELETE", f"/api/host/{h['id']}")
-    log(f"hosts ready: domain + {made} IPs")
-    QUIET["hosts"] = True
+    if not QUIET.get("hosts"):
+        log("domain host ready: Vless - Javad"); QUIET["hosts"] = True
+    have = {a for h in existing for a in _addrs(h)}
+    missing = [ip for ip in FRONT_IPS if ip not in have]
+    if missing:
+        log(f"IP List: {len(FRONT_IPS) - len(missing)} present, {len(missing)} still to generate")
+        _start_ip_fill(tag, path, fp)
+    elif not QUIET.get("ips"):
+        log(f"IP List ready: {len(FRONT_IPS)} configs"); QUIET["ips"] = True
 
 def ensure_settings():
     if not DOMAIN: return
