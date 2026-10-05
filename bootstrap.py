@@ -346,9 +346,9 @@ def ensure_node(core_id):
     must("POST", "/api/node", body); log("node created")
 
 def ensure_groups():
-    """One config only. The Pro group gets it. An old Flash/Fire/Diamond/Night group, if it already
-    exists, is pointed at the same config so those users are not left with zero links. New installs
-    do not create that second group. Returns {"pro": id, "std": id} (same id)."""
+    """One config only. Every existing group that pointed at a JinX inbound is moved onto that
+    single Vless inbound, otherwise those users lose every link when the old hosts are removed.
+    Returns {"pro": id, "std": id} (same id)."""
     tags = [i[0] for i in INBOUNDS]
     groups = as_list(must("GET", "/api/groups"), "groups")
     by_name = {g.get("name"): g for g in groups}
@@ -356,16 +356,19 @@ def ensure_groups():
         by_name[STD_GROUP] = by_name.pop(OLD_GROUP)
     g = by_name.get(PRO_GROUP)
     if g:
-        if sorted(g.get("inbound_tags") or []) != sorted(tags):
-            must("PUT", f"/api/group/{g['id']}", {"name": PRO_GROUP, "inbound_tags": tags}); log("group fixed:", PRO_GROUP)
         pro_id = g["id"]
     else:
         g = must("POST", "/api/group", {"name": PRO_GROUP, "inbound_tags": tags}); pro_id = g["id"]
         log("group created:", PRO_GROUP, f"({len(tags)} config)")
-    old = by_name.get(STD_GROUP)
-    if old and sorted(old.get("inbound_tags") or []) != sorted(tags):
-        must("PUT", f"/api/group/{old['id']}", {"name": old.get("name") or STD_GROUP, "inbound_tags": tags})
-        log("old group now serves the Vless config:", old.get("name"))
+        groups.append(g)
+    for grp in groups:
+        if not isinstance(grp, dict) or not grp.get("id"): continue
+        have = [str(t) for t in (grp.get("inbound_tags") or [])]
+        mine = grp.get("id") == pro_id or grp.get("name") in (PRO_GROUP, STD_GROUP, OLD_GROUP) or any(t.startswith("JX-") for t in have)
+        if not mine: continue
+        if sorted(have) != sorted(tags):
+            must("PUT", f"/api/group/{grp['id']}", {"name": grp.get("name") or PRO_GROUP, "inbound_tags": tags})
+            log("group now serves Vless - Javad:", grp.get("name"))
     return {"pro": pro_id, "std": pro_id}
 
 QUIET = {}
@@ -382,12 +385,9 @@ def ensure_hosts():
         log("WARNING: no public domain yet (Settings > Networking > Generate Domain), hosts skipped"); return
     existing = as_list(must("GET", "/api/hosts"), "hosts")
     wanted = {i[0] for i in INBOUNDS}
-    for h in existing:  # clean hosts left from older JinX versions
-        if str(h.get("inbound_tag") or "").startswith("JX-") and h.get("inbound_tag") not in wanted:
-            req("DELETE", f"/api/host/{h['id']}")
     changed = 0
     for idx, (tag, proto, port, net, path, fp, name, grp) in enumerate(INBOUNDS):
-        body = {"remark": f"{name} - {TITLE}", "allowinsecure": False, "address": [DOMAIN], "inbound_tag": tag,
+        body = {"remark": "Vless - Javad", "allowinsecure": False, "address": [DOMAIN], "inbound_tag": tag,
                 "port": 443, "sni": [DOMAIN], "host": [DOMAIN], "path": path + EARLY_DATA, "security": "tls",
                 "alpn": ["http/1.1"], "fingerprint": fp, "priority": idx + 1, "is_disabled": False}
         mine = [h for h in existing if h.get("inbound_tag") == tag]
@@ -399,6 +399,12 @@ def ensure_hosts():
                 req("DELETE", f"/api/host/{extra['id']}")
         else:
             must("POST", "/api/host/", body); changed += 1
+    existing = as_list(must("GET", "/api/hosts"), "hosts")
+    if not any(h.get("inbound_tag") in wanted for h in existing):
+        raise RuntimeError("Vless host was not saved, old hosts kept")
+    for h in existing:  # only after the Vless host exists: drop Flash / Fire / Diamond / Night
+        if str(h.get("inbound_tag") or "").startswith("JX-") and h.get("inbound_tag") not in wanted:
+            req("DELETE", f"/api/host/{h['id']}"); changed += 1
     if changed or not QUIET.get("hosts"): log(f"{len(INBOUNDS)} hosts ready on", DOMAIN); QUIET["hosts"] = True
 
 def ensure_settings():
@@ -497,16 +503,20 @@ def remove_demo_user():
             log("removed old auto-created test user", name) if c in (200, 204) else log(f"could not remove {name}: {c}")
 
 def attach_orphans(gids):
-    """Users created without a group get the Vless config. Users with a group are never touched."""
-    code, res = req("GET", "/api/users?no_group=true&limit=200")
+    """Users with no group get the Vless config. A user whose group was emptied by the old
+    Flash/Fire/Diamond/Night removal is attached too, so Copy configs and the sub page fill in."""
+    code, res = req("GET", "/api/users?limit=200")
     if code == 401:
-        login(); code, res = req("GET", "/api/users?no_group=true&limit=200")
+        login(); code, res = req("GET", "/api/users?limit=200")
     if code != 200: return
     for u in as_list(res, "users"):
-        # only touch users the API clearly reports as having NO group (never move Pro users)
-        if not isinstance(u, dict) or "group_ids" not in u or u.get("group_ids"): continue
+        if not isinstance(u, dict) or not u.get("username"): continue
+        groups = u.get("group_ids")
+        links = u.get("links") or u.get("subscription_url")
+        if groups and links: continue
+        if groups and "links" not in u and "subscription_url" not in u: continue
         c, r = req("PUT", f"/api/user/{u['username']}", {"group_ids": [gids["pro"]]})
-        log(f"no group picked for {u['username']} -> {PRO_GROUP}" if c == 200 else f"attach {u['username']} failed {c}: {r}")
+        log(f"linked {u['username']} -> Vless - Javad" if c == 200 else f"attach {u['username']} failed {c}: {r}")
 
 def heal_node(state):
     """Self-healing: if the built-in core is not connected twice in a row, restart it."""
