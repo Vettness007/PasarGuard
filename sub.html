@@ -175,6 +175,12 @@ html[dir=rtl] .bar i{transform-origin:right}
 .cp:active{transform:scale(.9)}
 .cp.ok{background:rgba(46,229,157,.16);color:var(--ok);box-shadow:inset 0 0 0 1px rgba(46,229,157,.4)}
 .empty{text-align:center;color:var(--muted);font-size:13px;line-height:1.9;padding:14px 6px}
+.cfgbar{display:flex;gap:8px;align-items:center;margin:-2px 0 12px}
+.cfgbar .btn{padding:8px 12px;font-size:12px}
+.cfgmore{display:grid;grid-template-rows:0fr;transition:grid-template-rows .4s var(--ease)}
+.cfgmore.on{grid-template-rows:1fr}
+.cfgmore>div{overflow:hidden;min-height:0}
+
 /* help */
 details{border-top:1px solid var(--line);padding:13px 2px}
 details:first-of-type{border-top:0;padding-top:2px}
@@ -295,12 +301,13 @@ html[dir=rtl] .fl{transform:scaleX(-1)}
   <section class="card rv">
     <div class="h"><span class="ic"><svg width="16" height="16"><use href="#i-link"/></svg></span><span data-t="subT"></span></div>
     <div class="lk"><code id="sub"></code><button type="button" class="btn" id="cpSub"><svg width="15" height="15"><use href="#i-copy"/></svg><span data-t="copy"></span></button></div>
-    <div class="two"><button type="button" class="btn gh" id="qrB"><svg width="16" height="16"><use href="#i-qr"/></svg><span data-t="qr"></span></button><button type="button" class="btn gh" id="cpAll"><svg width="16" height="16"><use href="#i-layers"/></svg><span data-t="all"></span></button></div>
+    <button type="button" class="btn gh" id="qrB" style="width:100%;margin-top:10px"><svg width="16" height="16"><use href="#i-qr"/></svg><span data-t="qr"></span></button>
     <div class="qrw" id="qrw"><div><div class="qr"><canvas id="qrc" width="400" height="400"></canvas><div class="lg"><svg><use href="#i-bolt2"/></svg></div></div></div></div>
   </section>
 
   <section class="card rv">
     <div class="h"><span class="ic"><svg width="16" height="16"><use href="#i-layers"/></svg></span><span data-t="cfgT"></span><span class="sp"></span><small id="cfgN" class="ltr"></small></div>
+    <div class="cfgbar"><button type="button" class="btn" id="cpAll"><svg width="16" height="16"><use href="#i-copy"/></svg><span data-t="all"></span></button><button type="button" class="btn gh" id="cfgToggle"><span id="cfgToggleT"></span></button></div>
     <div id="cfgs"></div>
   </section>
 
@@ -623,8 +630,15 @@ function render(){
  else if(!unl&&pct>=85){w.className="note warn rv on";ws.textContent=l.wData.replace("{n}",num(pct,0))}
  if(D.announce){$("ann").className="note info rv on";$("ann").querySelector("span").textContent=String(D.announce)}
   $("cfgN").textContent=CFG.length+l.cfgN;$("pNet").textContent=CFG.length+" CONFIGS";
- if(!CFG.length){$("cfgs").innerHTML='<div class="empty">'+esc(l.empty)+"</div>";$("cpAll").classList.add("hide")}
- else $("cfgs").innerHTML=CFG.map(function(c,i){return '<div class="cf'+(c.pro?" pro":"")+'" style="--ac:'+c.ac+'"><span class="ix"><svg width="19" height="19"><use href="#'+c.ic+'"/></svg></span><div class="nm"><b>'+esc(c.name)+'</b><div class="tg2">'+(c.pro?'<span class="crown">PRO</span>':"")+c.tags.map(function(t){return "<span>"+esc(t)+"</span>"}).join("")+'</div></div><button type="button" class="cp" data-q="'+i+'" aria-label="QR"><svg width="17" height="17"><use href="#i-qr"/></svg></button><button type="button" class="cp" data-i="'+i+'" aria-label="copy"><svg width="17" height="17"><use href="#i-copy"/></svg></button></div>'}).join("");
+ $("cpAll").classList.toggle("hide",!CFG.length);
+ $("cfgToggle").classList.toggle("hide",CFG.length<2);
+ if(!CFG.length){$("cfgs").innerHTML='<div class="empty">'+esc(l.empty)+"</div>"}
+ else {
+  function row(c,i){return '<div class="cf'+(c.pro?" pro":"")+'" style="--ac:'+c.ac+'"><span class="ix"><svg width="19" height="19"><use href="#'+c.ic+'"/></svg></span><div class="nm"><b>'+esc(c.name)+'</b><div class="tg2">'+(c.pro?'<span class="crown">PRO</span>':"")+c.tags.map(function(t){return "<span>"+esc(t)+"</span>"}).join("")+'</div></div><button type="button" class="cp" data-q="'+i+'" aria-label="QR"><svg width="17" height="17"><use href="#i-qr"/></svg></button><button type="button" class="cp" data-i="'+i+'" aria-label="copy"><svg width="17" height="17"><use href="#i-copy"/></svg></button></div>'}
+  var rest=CFG.slice(1).map(function(c,i){return row(c,i+1)}).join("");
+  $("cfgs").innerHTML=row(CFG[0],0)+(rest?'<div class="cfgmore" id="cfgMore"><div>'+rest+"</div></div>":"");
+  $("cfgToggleT").textContent=(lang==="fa"?"نمایش بقیه ("+(CFG.length-1)+")":"Show "+(CFG.length-1)+" more");
+ }
  if(PING.v!==undefined)paintPing();else $("pq").textContent=l.testing;
 }
 
@@ -665,6 +679,7 @@ document.addEventListener("click",function(e){
  var c=t.closest(".cp");if(c){if(c.hasAttribute("data-q"))openSheet(+c.getAttribute("data-q"));else copy(links[+c.getAttribute("data-i")],L().copied,c,e);return}
  if(t.closest("#cpSub")){copy(sub,L().copied,t.closest("#cpSub"),e);return}
  if(t.closest("#cpAll")){copy(links.join(NL),L().copiedAll,t.closest("#cpAll"),e);return}
+ if(t.closest("#cfgToggle")){var box=$("cfgMore");if(!box)return;var on=box.classList.toggle("on");$("cfgToggleT").textContent=on?(lang==="fa"?"بستن":"Hide"):(lang==="fa"?"نمایش بقیه ("+(CFG.length-1)+")":"Show "+(CFG.length-1)+" more");return}
  if(t.closest("#qrB")){if(!qrDone)qrDone=drawQr(sub,$("qrc"),"H");$("qrw").classList.toggle("on");return}
  if(t.closest("#pingB")){runPing();return}
  if(t.closest("#shCp")){if(cur>-1)copy(links[cur],L().copied,t.closest("#shCp"),e);return}
